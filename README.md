@@ -17,10 +17,28 @@ typing. No APIs, no vendor cooperation.
 skills/<name>/SKILL.md     the contract Claude reads (verb table + rules)
 skills/<name>/bin/<name>-agent   the tmux dispatcher that implements it
 skills/autopilot/SKILL.md  the autonomous orchestrator (wraps the dispatchers)
+agents-skills/<name>/      same dispatchers in the cross-agent Agent Skills
+                           format, for codex/opencode/pi as the ORCHESTRATOR
 hooks/                     per-tool completion hooks (exact done-detection)
-install.sh                 symlinks skills into ~/.claude/skills, installs hooks
+install.sh                 symlinks both trees, installs hooks
 doctor                     verifies the setup; optional live smoke test
 ```
+
+## Two skill trees: pick your orchestrator
+
+**`skills/` → `~/.claude/skills`** is for **Claude Code as the boss**. Skills are invoked as
+`/name`. Completion waiting is fully async: Claude arms `wait` as a backgrounded command and
+the harness pings it the instant the worker finishes (this also powers `/autopilot`).
+
+**`agents-skills/` → `~/.agents/skills`** is the same dispatchers in the cross-agent Agent
+Skills format, for when **codex, opencode, or pi is the boss**. Skills are invoked as
+`$name`, sessions are prefixed `codex-*`, and the worker set includes **claude** and
+**gemini**. One behavioral difference: those harnesses can't background a command and get
+re-invoked when it exits, so `wait` runs in the **foreground** (the orchestrator blocks for
+that turn until the worker goes idle). There is no `/autopilot` equivalent in this tree for
+the same reason: no background wake-up, no checkpoint loop.
+
+Install both, use whichever boss you're in.
 
 ## Prerequisites
 

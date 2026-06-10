@@ -43,6 +43,18 @@ for src in "$REPO_DIR"/skills/*/; do
 done
 
 echo
+echo "Agents-skills (~/.agents/skills, for codex/opencode/pi as orchestrator)"
+for src in "$REPO_DIR"/agents-skills/*/; do
+  name="$(basename "$src")"
+  dst="$HOME/.agents/skills/$name"
+  if [ -L "$dst" ] || [ -d "$dst" ]; then
+    ok "$name installed"
+  else
+    warn "$name not installed (run ./install.sh)"
+  fi
+done
+
+echo
 echo "Agent CLIs + completion hooks"
 
 check_tool() {
@@ -68,6 +80,8 @@ check_tool cursor   agent    "$HOME/.cursor/cc-notify.sh"
 check_tool copilot  copilot  ""
 check_tool droid    droid    ""
 check_tool agy      agy      ""
+check_tool claude   claude   ""
+check_tool gemini   gemini   ""
 
 if command -v codex >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
   grep -q 'cc-notify\.sh' "$HOME/.codex/config.toml" \

@@ -55,6 +55,36 @@ for src in "$REPO_DIR"/skills/*/; do
   say "$name"
 done
 
+# --- 1b. agents-skills -> ~/.agents/skills ------------------------------------
+# Same dispatchers in the cross-agent Agent Skills format, for using codex /
+# opencode / pi (instead of Claude Code) as the orchestrator. Invoked as $name;
+# `wait` runs in the foreground there (those harnesses can't background-and-
+# reinvoke). Workers include claude and gemini.
+AGENTS_DST="$HOME/.agents/skills"
+echo "Installing agents-skills ($MODE) into $AGENTS_DST"
+mkdir -p "$AGENTS_DST"
+for src in "$REPO_DIR"/agents-skills/*/; do
+  name="$(basename "$src")"
+  if [ -n "$ONLY_SKILLS" ]; then
+    case " $ONLY_SKILLS " in
+      *" $name "*) : ;;
+      *) continue ;;
+    esac
+  fi
+  dst="$AGENTS_DST/$name"
+  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+    warn "$name: $dst exists and is not a symlink; leaving it alone (move it aside and re-run to adopt the repo version)"
+    continue
+  fi
+  rm -f "$dst"
+  if [ "$MODE" = "link" ]; then
+    ln -s "${src%/}" "$dst"
+  else
+    cp -R "${src%/}" "$dst"
+  fi
+  say "$name"
+done
+
 # --- 2. worker env file -------------------------------------------------------
 ENV_FILE="$HOME/.config/cc-agents/env"
 if [ ! -f "$ENV_FILE" ]; then
