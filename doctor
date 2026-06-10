@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# cc-agents doctor: verify prerequisites, skills, and hooks on this machine.
+# Read-only; prints a report and exits 1 if anything required is broken.
+#
+#   ./doctor            # checks only
+#   ./doctor --smoke X  # also run a ~30s live smoke test against agent X
+#                       # (start a throwaway session, wait, stop)
+
+set -uo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+FAIL=0
+
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; FAIL=1; }
+warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
+skip() { printf '  \033[2m-\033[0m %s\n' "$1"; }
+
+echo "Prerequisites"
+
+if command -v tmux >/dev/null 2>&1; then
+  TMUX_V=$(tmux -V | grep -oE '[0-9]+\.[0-9]+' | head -1)
+  ok "tmux $TMUX_V"
+  # Dispatchers avoid the tmux>=3.2 -e flag, so any reasonably modern tmux is
+  # fine, but flag truly ancient versions.
+  awk -v v="$TMUX_V" 'BEGIN{exit !(v < 2.0)}' && warn "tmux $TMUX_V is very old; >= 3.0 recommended"
+else
+  bad "tmux not found"
+fi
+
+command -v perl >/dev/null 2>&1 && ok "perl (ANSI stripping)" || bad "perl not found (dispatchers use it to strip ANSI codes)"
+
+echo
+echo "Skills (~/.claude/skills)"
+for src in "$REPO_DIR"/skills/*/; do
+  name="$(basename "$src")"
+  dst="$HOME/.claude/skills/$name"
+  if [ -L "$dst" ] || [ -d "$dst" ]; then
+    ok "$name installed"
+  else
+    warn "$name not installed (run ./install.sh)"
+  fi
+done
+
+echo
+echo "Agent CLIs + completion hooks"
+
+check_tool() {
+  local name="$1" bin="$2" hook="$3"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    skip "$name: '$bin' not on PATH (skill unusable on this machine until installed + authed)"
+    return
+  fi
+  ok "$name: $bin found"
+  if [ -n "$hook" ]; then
+    if [ -f "$hook" ]; then
+      ok "$name: completion hook $hook"
+    else
+      warn "$name: hook missing ($hook); 'wait' falls back to spinner scrape (run ./install.sh)"
+    fi
+  fi
+}
+
+check_tool pi       pi       "$HOME/.pi/agent/extensions/cc-notify.ts"
+check_tool opencode opencode "$HOME/.config/opencode/plugin/cc-notify.js"
+check_tool codex    codex    "$HOME/.codex/cc-notify.sh"
+check_tool cursor   agent    "$HOME/.cursor/cc-notify.sh"
+check_tool copilot  copilot  ""
+check_tool droid    droid    ""
+check_tool agy      agy      ""
+
+if command -v codex >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
+  grep -q 'cc-notify\.sh' "$HOME/.codex/config.toml" \
+    && ok "codex: notify registered in config.toml" \
+    || warn "codex: cc-notify.sh not registered in config.toml (run ./install.sh)"
+fi
+if command -v agent >/dev/null 2>&1 && [ -f "$HOME/.cursor/hooks.json" ]; then
+  grep -q 'cc-notify\.sh' "$HOME/.cursor/hooks.json" \
+    && ok "cursor: stop hook registered in hooks.json" \
+    || warn "cursor: cc-notify.sh not registered in hooks.json (run ./install.sh)"
+fi
+
+echo
+echo "Worker env file"
+ENV_FILE="$HOME/.config/cc-agents/env"
+if [ -f "$ENV_FILE" ]; then
+  if grep -qE '^[A-Za-z_]+=' "$ENV_FILE"; then
+    ok "$ENV_FILE present with keys"
+  else
+    warn "$ENV_FILE present but has no keys yet (pi workers fall back to your login shell rc)"
+  fi
+else
+  warn "$ENV_FILE missing (run ./install.sh; pi workers fall back to your login shell rc)"
+fi
+
+# --- optional live smoke test -------------------------------------------------
+if [ "${1:-}" = "--smoke" ]; then
+  AGENT="${2:?usage: ./doctor --smoke <pi|opencode|codex|cursor|copilot|droid|agy>}"
+  DISPATCHER="$HOME/.claude/skills/$AGENT/bin/$AGENT-agent"
+  echo
+  echo "Smoke test: $AGENT (throwaway session cc-$AGENT-doctor)"
+  if [ ! -x "$DISPATCHER" ]; then
+    bad "dispatcher not found: $DISPATCHER"
+  else
+    "$DISPATCHER" --session "cc-$AGENT-doctor" stop >/dev/null 2>&1 || true
+    if "$DISPATCHER" --session "cc-$AGENT-doctor" start "Reply with exactly: CC_AGENTS_OK — then stop."; then
+      ok "start + task submission"
+      RESULT=$("$DISPATCHER" --session "cc-$AGENT-doctor" wait 4 120 || true)
+      echo "  wait -> $RESULT"
+      case "$RESULT" in
+        idle*) ok "completion detected" ;;
+        *)     warn "wait ended with: $RESULT (capture the session to inspect)" ;;
+      esac
+    else
+      bad "start failed (is $AGENT installed and authed?)"
+    fi
+    "$DISPATCHER" --session "cc-$AGENT-doctor" stop >/dev/null 2>&1 || true
+  fi
+fi
+
+echo
+[ "$FAIL" -eq 0 ] && echo "doctor: all required checks passed" || echo "doctor: required checks FAILED"
+exit "$FAIL"

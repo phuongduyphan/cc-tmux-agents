@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# droid-agent — dispatcher for driving a Droid (Factory AI) CLI session via tmux.
+# See ../SKILL.md for the contract.
+
+set -euo pipefail
+
+SID="cc-droid"
+if [ "${1:-}" = "--session" ]; then
+  SID="$2"
+  shift 2
+fi
+
+VERB="${1:-}"
+shift || true
+
+strip_ansi() {
+  perl -pe 's/\e\[[0-9;?]*[A-Za-z]//g; s/\e\][^\a]*\a//g'
+}
+
+# BUSY_RE — the "agent is actively working" indicator for this TUI. The single
+# per-agent knob: used both to confirm a submit landed (type_and_submit) and to
+# detect idle (wait).
+BUSY_RE='Streaming|ESC +to +stop|Thinking'
+
+# Type a message and submit it. Some TUIs swallow the first Enter after a paste
+# (treating it as a newline inside the draft) or take time to visually clear
+# the input box after submission, so we:
+#   1) type the text literally,
+#   2) wait for a 30-char canary to appear in the bottom ~15 lines (input-box region),
+#   3) send Enter, wait 1.2s, then accept submission if either:
+#        - a "ESC to stop" / "Streaming" processing indicator is visible (positive), or
+#        - the canary is gone from the bottom 15 lines (negative).
+#      Retry up to 3 times.
+type_and_submit() {
+  local msg="$1"
+  tmux send-keys -t "$SID" -l "$msg"
+  local probe="${msg:0:30}"
+
+  local confirmed=""
+  for _ in $(seq 1 20); do   # 20 * 0.25s = 5s to appear in draft
+    if tmux capture-pane -t "$SID" -p -S -15 2>/dev/null | strip_ansi | grep -qF "$probe"; then
+      confirmed=1
+      break
+    fi
+    sleep 0.25
+  done
+  if [ -z "$confirmed" ]; then
+    echo "warn: typed text never landed in input box within 5s" >&2
+  fi
+
+  sleep 0.5   # let the input widget settle
+  local attempt snap
+  for attempt in 1 2 3; do
+    tmux send-keys -t "$SID" Enter
+    sleep 1.2
+    snap=$(tmux capture-pane -t "$SID" -p -S -15 2>/dev/null | strip_ansi)
+    # Positive: processing indicator visible
+    if printf '%s' "$snap" | grep -qE "$BUSY_RE"; then
+      return 0
+    fi
+    # Negative: canary gone from input-box region
+    if ! printf '%s' "$snap" | grep -qF "$probe"; then
+      return 0
+    fi
+  done
+  echo "warn: Enter sent 3x but no submission signal detected" >&2
+  return 0
+}
+
+need_session() {
+  tmux has-session -t "$SID" 2>/dev/null || {
+    echo "error: no session '$SID'" >&2
+    exit 1
+  }
+}
+
+case "$VERB" in
+  start)
+    if tmux has-session -t "$SID" 2>/dev/null; then
+      echo "error: session '$SID' already running; run 'stop' first" >&2
+      exit 1
+    fi
+    tmux new-session -d -s "$SID" -x 220 -y 50 'droid'
+
+    READY_RE='\? for help|shift\+tab to cycle modes|ctrl\+L for autonomy'
+    READY=""
+    for _ in $(seq 1 40); do   # 40 * 0.5s = 20s budget
+      if tmux capture-pane -t "$SID" -p -S -100 2>/dev/null | strip_ansi | grep -qE "$READY_RE"; then
+        READY=1
+        break
+      fi
+      sleep 0.5
+    done
+    if [ -z "$READY" ]; then
+      echo "error: droid did not become ready within 20s; run 'capture' to inspect or 'stop' to tear down" >&2
+      exit 1
+    fi
+
+    if [ "$#" -gt 0 ]; then
+      type_and_submit "$*"
+    fi
+    echo "started session=$SID"
+    ;;
+
+  send)
+    need_session
+    MSG="$*"
+    if [ -z "$MSG" ]; then
+      echo "usage: send <message>" >&2
+      exit 1
+    fi
+    type_and_submit "$MSG"
+    echo "sent session=$SID chars=${#MSG}"
+    ;;
+
+  keys)
+    need_session
+    KEY="${1:-}"
+    if [ -z "$KEY" ]; then
+      echo "usage: keys <name>" >&2
+      exit 1
+    fi
+    tmux send-keys -t "$SID" "$KEY"
+    echo "sent key=$KEY"
+    ;;
+
+  capture)
+    need_session
+    LINES="${1:-500}"
+    tmux capture-pane -t "$SID" -p -S -1000 | strip_ansi | tail -n "$LINES"
+    ;;
+
+  wait)
+    # Block until the agent goes idle, then exit. Meant to be run via a backgrounded
+    # Bash (run_in_background: true) so the harness notifies Claude on exit —
+    # auto-detection of "agent finished" without Claude polling on a timer.
+    #
+    # Two phases:
+    #   1) arm  — wait (up to ARM secs) for the working indicator to APPEAR, so
+    #             we don't declare "done" before the agent has even started.
+    #   2) wait — exit once the indicator has been continuously GONE for STABLE
+    #             secs (debounce: the spinner briefly drops between steps).
+    #
+    # Final stdout line is the state Claude reads on wake-up:
+    #   idle    — spinner gone and stable; task appears complete
+    #   prompt  — idle but a y/n-style permission prompt is on screen
+    #   timeout — still busy after the overall cap
+    #   gone    — session was killed while waiting
+    need_session
+    POLL=2
+    STABLE="${1:-6}"        # secs the indicator must stay gone before declaring idle
+    TIMEOUT="${2:-1800}"    # overall cap (30 min default)
+    ARM="${ARM_TIMEOUT:-25}"
+
+    # Working indicator comes from the shared BUSY_RE knob (top of file).
+    spinner_re="$BUSY_RE"
+    prompt_re='\[y/n\]|\(y/[nN]\)|\by/n\b|\bAllow\b|\bapprove\b|Do you want|Yes/No|❯'
+
+    snap_pane() {
+      tmux has-session -t "$SID" 2>/dev/null || return 1
+      tmux capture-pane -t "$SID" -p -S -30 2>/dev/null | strip_ansi 2>/dev/null || true
+    }
+
+    start_ts=$SECONDS
+
+    # Phase 1: wait for the working indicator to appear. Poll fast (0.5s) so a
+    # brief spinner from a fast model isn't missed. If it never appears, the agent
+    # either finished before we armed or never started — Claude captures to tell which.
+    armed=""
+    while [ $((SECONDS - start_ts)) -lt "$ARM" ]; do
+      snap=$(snap_pane) || { echo "gone session=$SID"; exit 0; }
+      if printf '%s' "$snap" | grep -qE "$spinner_re"; then armed=1; break; fi
+      sleep 0.5
+    done
+    if [ -z "$armed" ]; then
+      echo "idle session=$SID note=no-activity-within-${ARM}s-finished-fast-or-not-started"
+      exit 0
+    fi
+
+    # Phase 2: wait until the indicator has been gone continuously for STABLE secs.
+    idle_since=""
+    while [ $((SECONDS - start_ts)) -lt "$TIMEOUT" ]; do
+      snap=$(snap_pane) || { echo "gone session=$SID"; exit 0; }
+      if printf '%s' "$snap" | grep -qE "$spinner_re"; then
+        idle_since=""
+      else
+        [ -z "$idle_since" ] && idle_since=$SECONDS
+        if [ $((SECONDS - idle_since)) -ge "$STABLE" ]; then
+          if printf '%s' "$snap" | grep -qE "$prompt_re"; then
+            echo "prompt session=$SID note=idle-with-possible-permission-prompt"
+          else
+            echo "idle session=$SID note=task-appears-complete"
+          fi
+          exit 0
+        fi
+      fi
+      sleep "$POLL"
+    done
+    echo "timeout session=$SID note=still-busy-after-${TIMEOUT}s"
+    exit 0
+    ;;
+
+  stop)
+    if tmux has-session -t "$SID" 2>/dev/null; then
+      tmux kill-session -t "$SID" 2>/dev/null || true
+    fi
+    echo "stopped session=$SID"
+    ;;
+
+  list)
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^cc-droid' || echo "no active sessions"
+    ;;
+
+  *)
+    echo "usage: droid-agent [--session <name>] <start|send|keys|capture|wait|stop|list> [args]" >&2
+    exit 2
+    ;;
+esac
