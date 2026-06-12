@@ -1,6 +1,8 @@
 # cc-tmux-agents
 
-**Let Claude Code talk to your other coding agents.** Like Claude Code subagents, but the subagents are codex, opencode, pi, etc. Delegate a task, watch it work, send follow-ups, interrupt it, and have Claude review the result. Steer it yourself, or hand the whole thing off and walk away.
+**Let Claude Code talk to your other coding agents.** 
+
+Like Claude Code subagents, but the subagents are codex, opencode, pi, etc. Delegate a task, watch it work, send follow-ups, interrupt it, and have Claude review the result. Steer it yourself, or hand the whole thing off and walk away.
 
 https://github.com/user-attachments/assets/824acaf6-e4ba-461c-bed9-cc6775d43233
 
