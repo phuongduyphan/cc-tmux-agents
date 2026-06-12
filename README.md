@@ -2,25 +2,13 @@
 
 **Let Claude Code talk to your other coding agents.** Like Claude Code subagents, but the subagents are codex, opencode, pi, etc. Delegate a task, watch it work, send follow-ups, interrupt it, and have Claude review the result. Steer it yourself, or hand the whole thing off and walk away.
 
-Running a high-end model (Claude, Codex) for *everything* is expensive, and most of that cost is implementation, the line-by-line typing, not the thinking. So split the work: keep Claude for planning, discussing, and reviewing, where judgment pays off, and hand the bulk implementation to a cheaper agent. You pay premium rates only for the small, high-leverage part.
-
-The trick that makes it work: every coding agent is just a TUI in a terminal. So the entire integration surface is three tmux commands: `send-keys` to type into its prompt, `capture-pane` to read its screen, and `send-keys Escape` to interrupt it. Claude plays the boss; a cheaper model does the typing. No APIs, no SDKs, no vendor cooperation. If a tool runs in a terminal, Claude can drive it.
-
-<!-- DEMO: replace with an asciinema GIF. Suggested capture (~30s):
-     1. /autopilot opencode "add a --json flag to the status command"
-     2. show the checkpoint ping firing
-     3. show Claude reviewing the diff and reporting done
-     Record with:  asciinema rec demo.cast   then   agg demo.cast demo.gif
--->
-![demo](docs/demo.gif)
+▶️ **[Watch the demo](https://drive.google.com/file/d/1T907nvPSicOJVnYiTr1K-sAwm5Td6sjc/view?usp=sharing)**
 
 ## Why
 
 - **Pay top rates only for the thinking.** A strong model earns its price on planning and review, which are light on tokens. Implementation is the token-heavy part, so running it on a cheaper agent is where the real savings are, without giving up the decisions.
-- **Cheap workers drift; a strong orchestrator keeps them honest.** Cheaper models loop, wander, and stall. Keeping Claude in the loop as the boss keeps the worker pointed at the goal.
-- **One mechanism drives every tool.** No per-vendor API. tmux works for any TUI, including tools that ship next month.
-- **Semi-auto or fully auto, same primitives.** Look over the agent's shoulder and steer when you want (`tmux attach`), or run `/autopilot` and let Claude checkpoint, course-correct, and review on its own.
-- **A foundation for autonomous workflows.** The verbs (start, check, tell, interrupt, wait, kill) are composable. `/autopilot` is one workflow built on them; you can build your own.
+- **Minimal setup, basic primitives, build your own workflows.** One mechanism (tmux) drives any agent, no per-vendor API, so a handful of composable primitives (start, check, tell, interrupt, wait, kill) is the whole surface. Steer a run by hand, or compose those primitives into something fully autonomous: `/autopilot` is one such workflow, and you can build your own.
+- **Works everywhere, from your laptop to your phone.** It's all tmux over SSH. Kick off a run at your desk, then check on it, steer it, or start a new one from your phone.
 
 ## Quick start
 
@@ -35,7 +23,7 @@ cd ~/code/cc-tmux-agents
 `install.sh` symlinks the skills into place by default, so `git pull` updates them with no reinstall (pass `--copy` to install copies instead, which then need a re-run after each pull). Then, in Claude Code:
 
 ```
-/opencode add a --json flag to the status command
+/opencode what is this project about?
 ```
 
 That starts a tmux session running opencode, types the task, and (by default) arms a background `wait` so Claude is pinged the instant the worker finishes.
@@ -60,12 +48,24 @@ Supported workers: **pi, opencode, codex, cursor, copilot, droid, agy** (plus **
 
 ## How it works
 
-There are two skill trees, so any agent can be the boss:
+Every coding agent is just a TUI in a terminal, so the whole integration is a handful of tmux commands against the agent's pane. No per-vendor API, no SDK: if a tool runs in a terminal, Claude can drive it.
 
-- **`skills/` → `~/.claude/skills`** is for **Claude Code as the boss**. Skills are invoked as `/name`. Completion waiting is fully async: Claude runs `wait` as a backgrounded command, and the harness pings it the moment the worker goes idle. This is what powers `/autopilot`.
-- **`agents-skills/` → `~/.agents/skills`** is the same dispatchers in the cross-agent Agent Skills format, for when **codex, opencode, or pi is the boss**. Skills are invoked as `$name`. One difference: those harnesses can't background a command and get re-woken, so `wait` runs in the foreground (the orchestrator blocks for that turn, then reports). There's no `/autopilot` here for the same reason: no background wake-up, no checkpoint loop.
+| What Claude does | How (tmux) |
+|---|---|
+| Type the task or a follow-up | `send-keys` into the pane |
+| Read what the agent is doing | `capture-pane`, with ANSI codes stripped |
+| Interrupt a wrong turn | `send-keys Escape` |
+| Start or tear down a run | `new-session` / `kill-session` |
+| Know the instant it finishes | a per-tool completion hook, falling back to watching the spinner |
 
-Install both and use whichever boss you're in. Each skill is a `SKILL.md` (the contract Claude reads: a verb table plus rules) backed by a small bash dispatcher (`bin/<name>-agent`) that does the actual tmux work. Per-tool completion hooks give the `wait` verb exact done-detection instead of watching a spinner.
+A small bash dispatcher (`bin/<name>-agent`) wraps these into verbs, and a `SKILL.md` tells Claude which verb to use when. Claude decides what to do; the cheaper model inside the agent does the typing.
+
+Two skill trees let either side be the boss:
+
+- **`skills/` → `~/.claude/skills`** (Claude Code as boss): skills invoked as `/name`. `wait` runs as a backgrounded command, so the harness pings Claude the moment the worker goes idle. This powers `/autopilot`.
+- **`agents-skills/` → `~/.agents/skills`** (codex, opencode, or pi as boss): the same dispatchers in the cross-agent format, invoked as `$name`. These harnesses can't background-and-wake, so `wait` runs in the foreground, and there's no `/autopilot`.
+
+Install both and use whichever boss you're in.
 
 ```
 skills/<name>/SKILL.md          the contract Claude reads (verbs + rules)
@@ -107,8 +107,12 @@ The installer also creates `~/.config/cc-agents/env` (chmod 600). Put the model-
 - **Session already running.** Each skill uses one named session (e.g. `cc-pi`). Run `<name>-agent stop` or use `--session <other-name>` for parallel sessions.
 </details>
 
-## Background
+## Why tmux instead of headless mode
 
-Why tmux instead of headless `run`/`exec` modes, how the checkpoint loop breaks cheap-model thinking loops, and the plan-once-delegate-many workflow these skills enact: see the internal talk "Working with coding agents without a blank check".
-</content>
-</invoke>
+Most agent CLIs offer a headless `run`/`exec` mode. These skills deliberately drive the interactive TUI over tmux instead:
+
+- **You can watch and steer mid-run.** Headless is fire-and-forget; tmux lets you or Claude read progress, course-correct, and redirect before a wrong approach burns an hour.
+- **Interrupting is free.** A bad turn is one `Escape` away, instead of waiting for a headless run to finish or killing the process and losing its state.
+- **One integration for every tool.** Every agent has a terminal UI; not every agent has a stable headless API. tmux works for all of them, including tools that ship next month.
+- **The session is durable and reachable.** It lives on the host, so you can detach, close your laptop, and reattach from another machine (or your phone) with the run still going.
+- **Warm context instead of a cold start each turn.** A headless `run` spins up a fresh session every invocation, so the agent re-reads everything from scratch. A persistent tmux session stays alive across turns, so the prompt cache stays warm and follow-ups are cheaper and faster.
