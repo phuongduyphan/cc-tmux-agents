@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# cc-agents installer.
+# cc-tmux-agents installer.
 #
-# Symlinks the skills into ~/.claude/skills/ (so `git pull` updates them in
-# place) and installs the per-tool completion hooks for the agent CLIs that are
-# present on this machine. Idempotent: safe to re-run after a pull.
+# Copies the skills into ~/.claude/skills/ and ~/.agents/skills/ and installs
+# the per-tool completion hooks for the agent CLIs present on this machine.
+# Only the skill folders shipped by this repo are touched; any other skills you
+# have are left untouched. Idempotent: safe to re-run (it refreshes its own
+# installs, after a `git pull` for example).
 #
 # Usage:
-#   ./install.sh            # symlink skills + install hooks for detected tools
-#   ./install.sh --copy     # copy instead of symlink (no live updates on pull)
+#   ./install.sh            # copy skills + install hooks for detected tools
+#   ./install.sh --link     # symlink instead of copy (live updates on pull, no re-run)
 #   ./install.sh --skills "pi opencode autopilot"   # subset only
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DST="$HOME/.claude/skills"
-MODE="link"
+MODE="copy"
 ONLY_SKILLS=""
+MARKER=".cc-tmux-agents-managed"   # dropped into copied skills so re-runs can safely refresh them
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --link) MODE="link"; shift ;;
     --copy) MODE="copy"; shift ;;
     --skills) ONLY_SKILLS="$2"; shift 2 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -30,30 +34,42 @@ say()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 skip() { printf '  \033[2m-\033[0m %s\n' "$1"; }
 
+# Install one skill tree (copy or symlink), touching only the folders this repo
+# ships. An existing same-named folder that we did NOT install is left alone, so
+# a skill of yours that happens to share a name is never clobbered.
+install_tree() {
+  local srcdir="$1" dstroot="$2" src name dst
+  mkdir -p "$dstroot"
+  for src in "$srcdir"/*/; do
+    name="$(basename "$src")"
+    if [ -n "$ONLY_SKILLS" ]; then
+      case " $ONLY_SKILLS " in
+        *" $name "*) : ;;
+        *) continue ;;
+      esac
+    fi
+    dst="$dstroot/$name"
+    if [ -L "$dst" ]; then
+      rm -f "$dst"                                   # prior symlink install
+    elif [ -e "$dst" ] && [ ! -e "$dst/$MARKER" ]; then
+      warn "$name: $dst exists and wasn't installed by cc-tmux-agents; leaving it alone (move it aside and re-run to replace)"
+      continue
+    else
+      rm -rf "$dst"                                  # our own prior copy (or nothing); refresh it
+    fi
+    if [ "$MODE" = "link" ]; then
+      ln -s "${src%/}" "$dst"
+    else
+      cp -R "${src%/}" "$dst"
+      touch "$dst/$MARKER"
+    fi
+    say "$name"
+  done
+}
+
 # --- 1. skills -> ~/.claude/skills ------------------------------------------
 echo "Installing skills ($MODE) into $SKILLS_DST"
-mkdir -p "$SKILLS_DST"
-for src in "$REPO_DIR"/skills/*/; do
-  name="$(basename "$src")"
-  if [ -n "$ONLY_SKILLS" ]; then
-    case " $ONLY_SKILLS " in
-      *" $name "*) : ;;
-      *) continue ;;
-    esac
-  fi
-  dst="$SKILLS_DST/$name"
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    warn "$name: $dst exists and is not a symlink; leaving it alone (move it aside and re-run to adopt the repo version)"
-    continue
-  fi
-  rm -f "$dst"
-  if [ "$MODE" = "link" ]; then
-    ln -s "${src%/}" "$dst"
-  else
-    cp -R "${src%/}" "$dst"
-  fi
-  say "$name"
-done
+install_tree "$REPO_DIR/skills" "$SKILLS_DST"
 
 # --- 1b. agents-skills -> ~/.agents/skills ------------------------------------
 # Same dispatchers in the cross-agent Agent Skills format, for using codex /
@@ -62,28 +78,7 @@ done
 # reinvoke). Workers include claude and gemini.
 AGENTS_DST="$HOME/.agents/skills"
 echo "Installing agents-skills ($MODE) into $AGENTS_DST"
-mkdir -p "$AGENTS_DST"
-for src in "$REPO_DIR"/agents-skills/*/; do
-  name="$(basename "$src")"
-  if [ -n "$ONLY_SKILLS" ]; then
-    case " $ONLY_SKILLS " in
-      *" $name "*) : ;;
-      *) continue ;;
-    esac
-  fi
-  dst="$AGENTS_DST/$name"
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    warn "$name: $dst exists and is not a symlink; leaving it alone (move it aside and re-run to adopt the repo version)"
-    continue
-  fi
-  rm -f "$dst"
-  if [ "$MODE" = "link" ]; then
-    ln -s "${src%/}" "$dst"
-  else
-    cp -R "${src%/}" "$dst"
-  fi
-  say "$name"
-done
+install_tree "$REPO_DIR/agents-skills" "$AGENTS_DST"
 
 # --- 2. worker env file -------------------------------------------------------
 ENV_FILE="$HOME/.config/cc-agents/env"

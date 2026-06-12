@@ -22,7 +22,7 @@ cd ~/code/cc-tmux-agents
 ./doctor --smoke opencode    # optional ~30s live end-to-end test
 ```
 
-`install.sh` symlinks the skills into place by default, so `git pull` updates them with no reinstall (pass `--copy` to install copies instead, which then need a re-run after each pull). Then, in Claude Code:
+`install.sh` copies the skills into place (it touches only its own skill folders, so your other skills are left alone). Re-run it after a `git pull` to refresh them, or pass `--link` to symlink instead so pulls update them live with no re-run. Then, in Claude Code:
 
 ```
 /opencode what is this project about?
@@ -75,7 +75,7 @@ skills/<name>/bin/<name>-agent  the tmux dispatcher that implements it
 skills/autopilot/               the autonomous orchestrator (wraps the dispatchers)
 agents-skills/<name>/           same dispatchers, cross-agent format (codex/opencode/pi as boss)
 hooks/                          per-tool completion hooks (exact done-detection)
-install.sh                      symlinks both trees, installs hooks
+install.sh                      copies both trees, installs hooks
 doctor                          verifies the setup; optional live smoke test
 ```
 
