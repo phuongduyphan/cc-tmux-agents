@@ -2,7 +2,7 @@
 
 **Let Claude Code talk to your other coding agents.** Like Claude Code subagents, but the subagents are codex, opencode, pi, etc. Delegate a task, watch it work, send follow-ups, interrupt it, and have Claude review the result. Steer it yourself, or hand the whole thing off and walk away.
 
-▶️ **[Watch the demo](https://drive.google.com/file/d/1T907nvPSicOJVnYiTr1K-sAwm5Td6sjc/view?usp=sharing)**
+https://github.com/user-attachments/assets/824acaf6-e4ba-461c-bed9-cc6775d43233
 
 ## Why
 
