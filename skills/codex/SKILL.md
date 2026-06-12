@@ -29,14 +29,14 @@ Verbs:
 
 | User says                                                          | Do                                              |
 |--------------------------------------------------------------------|-------------------------------------------------|
-| `/codex <task>`                                                    | `start <task>`; reply "Started. Tell me when to check." |
+| `/codex <task>`                                                    | `start <task>`, then arm Auto-notify (below); reply "Started. I'll ping you when codex finishes." |
 | "check codex" / "progress" / "what's codex doing" / "ask codex for progress" | `capture`. Show the relevant tail, add a one-line diagnosis (running / idle / error / prompt). **Do not send ESC.** |
 | "interrupt codex" / "esc codex"                                    | `keys Escape` → `capture`.                      |
 | "tell codex: X" / "send codex: X"                                  | `send X`.                                       |
 | "kill codex" / "stop codex"                                        | `stop`.                                         |
 
 Rules:
-- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. Only `capture` when the user asks — *or* arm the `wait` watcher (see Auto-notify), which polls inside a cheap background shell instead.
+- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. For new tasks, arm the `wait` watcher by default (see Auto-notify), which polls inside a cheap background shell instead. Only `capture` when the user asks.
 - **Never send `Escape`** unless the user explicitly asks to interrupt.
 - `capture` is the default observation verb. Prefer it over intervention.
 
@@ -52,9 +52,9 @@ Rules:
 
 ## Auto-notify (get pinged when codex finishes, no timer)
 
-When the user wants to be told the moment codex is done — without Claude polling on a timer — arm a backgrounded watcher. The trick is entirely Claude-side: codex sends no signal. A background shell scrapes the pane and **exits when codex goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
+After `start` — and after any `send` that should produce another completion ping — arm a backgrounded watcher. This is the default for `/codex <task>`; the user does not need to say "tell me when it's done". The trick is entirely Claude-side: codex sends no signal. A background shell scrapes the pane and **exits when codex goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
 
-Trigger: `/codex <task>` together with "tell me when it's done" / "notify me" / "ping me when codex finishes". Do `start <task>`, then call the `wait` verb through a **backgrounded Bash**:
+To arm it, call the `wait` verb through a **backgrounded Bash**:
 
 ```
 Bash(

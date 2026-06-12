@@ -29,14 +29,14 @@ Verbs:
 
 | User says                                                          | Do                                              |
 |--------------------------------------------------------------------|-------------------------------------------------|
-| `/opencode <task>`                                                 | `start <task>`; reply "Started. Tell me when to check." |
+| `/opencode <task>`                                                 | `start <task>`, then arm Auto-notify (below); reply "Started. I'll ping you when opencode finishes." |
 | "check opencode" / "progress" / "what's opencode doing" / "ask opencode for progress" | `capture`. Show the relevant tail, add a one-line diagnosis (running / idle / error / prompt). **Do not send ESC.** |
 | "interrupt opencode" / "esc opencode"                              | `keys Escape` → `capture`.                      |
 | "tell opencode: X" / "send opencode: X"                            | `send X`.                                       |
 | "kill opencode" / "stop opencode"                                  | `stop`.                                         |
 
 Rules:
-- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. Only `capture` when the user asks — *or* arm the `wait` watcher (see Auto-notify), which polls inside a cheap background shell instead.
+- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. For new tasks, arm the `wait` watcher by default (see Auto-notify), which polls inside a cheap background shell instead. Only `capture` when the user asks.
 - **Never send `Escape`** unless the user explicitly asks to interrupt.
 - `capture` is the default observation verb. Prefer it over intervention.
 
@@ -53,9 +53,9 @@ Rules:
 
 ## Auto-notify (get pinged when opencode finishes, no timer)
 
-When the user wants to be told the moment opencode is done — without Claude polling on a timer — arm a backgrounded watcher. The trick is entirely Claude-side: opencode sends no signal. A background shell scrapes the pane and **exits when opencode goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
+After `start` — and after any `send` that should produce another completion ping — arm a backgrounded watcher. This is the default for `/opencode <task>`; the user does not need to say "tell me when it's done". The trick is entirely Claude-side: opencode sends no signal. A background shell scrapes the pane and **exits when opencode goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
 
-Trigger: `/opencode <task>` together with "tell me when it's done" / "notify me" / "ping me when opencode finishes". Do `start <task>`, then call the `wait` verb through a **backgrounded Bash**:
+To arm it, call the `wait` verb through a **backgrounded Bash**:
 
 ```
 Bash(

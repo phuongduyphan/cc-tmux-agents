@@ -29,21 +29,21 @@ Verbs:
 
 | User says                                                      | Do                                              |
 |----------------------------------------------------------------|-------------------------------------------------|
-| `/pi <task>`                                                   | `start <task>`; reply "Started. Tell me when to check." |
+| `/pi <task>`                                                   | `start <task>`, then arm Auto-notify (below); reply "Started. I'll ping you when pi finishes." |
 | "check pi" / "progress" / "what's pi doing" / "ask pi for progress" | `capture`. Show the relevant tail, add a one-line diagnosis (running / idle / error / prompt). **Do not send ESC.** |
 | "interrupt pi" / "esc pi"                                      | `keys Escape` → `capture`.                      |
 | "tell pi: X" / "send pi: X"                                    | `send X`.                                       |
 | "kill pi" / "stop pi"                                          | `stop`.                                         |
-| `/pi <task>` **+ "tell me when it's done" / "notify me" / "ping me when pi finishes"** | `start <task>`, then arm Auto-notify (below). |
+| `/pi <task>` **+ "tell me when it's done" / "notify me" / "ping me when pi finishes"** | Same as `/pi <task>`; Auto-notify is already the default. |
 
 Rules:
-- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. Only `capture` when the user asks — *or* arm the `wait` watcher, which polls inside a cheap background shell instead.
+- **Never auto-poll** by burning Claude turns on a `ScheduleWakeup`/timer. For new tasks, arm the `wait` watcher by default, which polls inside a cheap background shell instead. Only `capture` when the user asks.
 - **Never send `Escape`** unless the user explicitly asks to interrupt.
 - `capture` is the default observation verb. Prefer it over intervention.
 
 ## Auto-notify (get pinged when pi finishes, no timer)
 
-When the user wants to be told the moment pi is done — without Claude polling on a timer — arm a backgrounded watcher. The trick is entirely Claude-side: pi sends no signal. A background shell scrapes the pane and **exits when pi goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
+After `start` — and after any `send` that should produce another completion ping — arm a backgrounded watcher. This is the default for `/pi <task>`; the user does not need to say "tell me when it's done". The trick is entirely Claude-side: pi sends no signal. A background shell scrapes the pane and **exits when pi goes idle**, and the harness re-invokes Claude on that exit. The polling moves into a cheap shell loop; Claude is woken exactly once.
 
 To arm it, after `start` (or after a `send`), call the `wait` verb through a **backgrounded Bash**:
 

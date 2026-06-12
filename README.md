@@ -27,8 +27,11 @@ doctor                     verifies the setup; optional live smoke test
 ## Two skill trees: pick your orchestrator
 
 **`skills/` → `~/.claude/skills`** is for **Claude Code as the boss**. Skills are invoked as
-`/name`. Completion waiting is fully async: Claude arms `wait` as a backgrounded command and
-the harness pings it the instant the worker finishes (this also powers `/autopilot`).
+`/name`. Completion waiting is fully async and armed by default for plain delegation: Claude
+runs `wait` as a backgrounded command after `start`, and the harness pings it the instant the
+worker finishes (this also powers `/autopilot`). If a future worker lacks a `wait` primitive,
+fall back to the old user-driven flow: start it and tell the user to ask when they want a check
+or completion ping.
 
 **`agents-skills/` → `~/.agents/skills`** is the same dispatchers in the cross-agent Agent
 Skills format, for when **codex, opencode, or pi is the boss**. Skills are invoked as
@@ -81,11 +84,11 @@ In Claude Code:
 
 | You say | What happens |
 |---|---|
-| `/opencode <task>` | starts a tmux session running opencode, types the task |
+| `/opencode <task>` | starts a tmux session running opencode, types the task, and arms backgrounded `wait` by default |
 | "check opencode" | captures the pane, shows the tail, one-line diagnosis |
 | "tell opencode: X" | queues a follow-up into the same session |
 | "interrupt opencode" | sends Escape |
-| "tell me when it's done" | arms a backgrounded `wait`; Claude is pinged on completion |
+| "tell me when it's done" | already the default for plain delegation; Claude is pinged on completion |
 | "kill opencode" | tears the session down |
 | `/autopilot opencode <task>` | fully autonomous: checkpoints, course-corrections, final review, decision log at `/tmp/cc-autopilot-<agent>-decisions.md` |
 

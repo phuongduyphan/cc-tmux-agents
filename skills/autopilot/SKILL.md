@@ -199,5 +199,5 @@ The bg `wait` follows the complementary rule: kill it before an Escape, re-arm i
 
 - Tasks under ~15 min: just do them inline.
 - Tasks requiring iterative human design judgment: those stay with the main agent.
-- A plain "tell me when it's done" with no intervention wanted: a single backgrounded `wait` on the user-driven skill is lighter.
+- A plain user-driven task with no intervention wanted: the default backgrounded `wait` on the user-driven skill is lighter.
 - Tasks gated on external state (CI, deploys, queues): use `/loop` with the appropriate probe instead.
