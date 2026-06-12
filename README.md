@@ -36,10 +36,11 @@ or completion ping.
 **`agents-skills/` → `~/.agents/skills`** is the same dispatchers in the cross-agent Agent
 Skills format, for when **codex, opencode, or pi is the boss**. Skills are invoked as
 `$name`, sessions are prefixed `codex-*`, and the worker set includes **claude** and
-**gemini**. One behavioral difference: those harnesses can't background a command and get
-re-invoked when it exits, so `wait` runs in the **foreground** (the orchestrator blocks for
-that turn until the worker goes idle). There is no `/autopilot` equivalent in this tree for
-the same reason: no background wake-up, no checkpoint loop.
+**gemini**. Plain delegation also waits by default, but one behavioral difference matters:
+those harnesses can't background a command and get re-invoked when it exits, so `wait` runs in
+the **foreground** (the orchestrator blocks for that turn until the worker goes idle, then
+captures and reports). There is no `/autopilot` equivalent in this tree for the same reason:
+no background wake-up, no checkpoint loop.
 
 Install both, use whichever boss you're in.
 

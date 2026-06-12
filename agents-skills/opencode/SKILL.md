@@ -29,15 +29,15 @@ Verbs:
 
 | User says                                                          | Do                                              |
 |--------------------------------------------------------------------|-------------------------------------------------|
-| `$opencode <task>` / "delegate to opencode"                        | `start <task>`; reply "Started. Tell me when to check." |
-| `$opencode <task>` **+ "tell me when it's done" / "notify me"** | `start <task>`, then run `wait` in the **foreground** (blocks this turn until opencode is idle); on return, `capture` + report. |
+| `$opencode <task>` / "delegate to opencode"                        | `start <task>`, then run `wait` in the **foreground** (blocks this turn until opencode is idle); on return, `capture` + report. |
+| `$opencode <task>` **+ "tell me when it's done" / "notify me"** | Same as `$opencode <task>`; foreground `wait` is already the default. |
 | "check opencode" / "progress" / "what's opencode doing" / "ask opencode for progress" | `capture`. Show the relevant tail, add a one-line diagnosis (running / idle / error / prompt). **Do not send ESC.** |
 | "interrupt opencode" / "esc opencode"                              | `keys Escape` → `capture`.                      |
 | "tell opencode: X" / "send opencode: X"                            | `send X`.                                       |
 | "kill opencode" / "stop opencode"                                  | `stop`.                                         |
 
 Rules:
-- **Never auto-poll** on a timer. Only act when the user asks — or run `wait` in the foreground (see "Wait for completion"), which blocks in one cheap shell loop instead of polling.
+- **Never auto-poll** on a timer. For new tasks, run `wait` in the foreground by default (see "Wait for completion"), which blocks in one cheap shell loop instead of polling. Only `capture` separately when the user asks.
 - **Never send `Escape`** unless the user explicitly asks to interrupt.
 - `capture` is the default observation verb. Prefer it over intervention.
 
@@ -55,7 +55,7 @@ Rules:
 
 ## Wait for completion
 
-When you want to know the moment opencode is done, run the `wait` verb in the **foreground** right after `start` (or a follow-up `send`). It blocks the current turn in a single cheap shell loop and returns the instant opencode goes idle, printing the final state on its last stdout line. Then `capture` and report.
+After `start` — and after any `send` that should produce another completion report — run the `wait` verb in the **foreground**. This is the default for `$opencode <task>`; the user does not need to say "tell me when it's done". It blocks the current turn in a single cheap shell loop and returns the instant opencode goes idle, printing the final state on its last stdout line. Then `capture` and report.
 
 Foreground is the right mode here. Codex (and most CLI agents) run a shell command to completion and cannot re-invoke themselves when a backgrounded command exits; that background-and-notify trick is specific to Claude Code. So `wait` blocks the turn rather than freeing it. **Long-task caveat:** if `wait` returns `timeout … still-busy`, or the orchestrator's own command timeout fires first, opencode is still running, so just run `wait` again to keep waiting.
 
