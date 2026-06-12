@@ -30,6 +30,19 @@ cd ~/code/cc-tmux-agents
 
 That starts a tmux session running opencode, types the task, and (by default) arms a background `wait` so Claude is pinged the instant the worker finishes.
 
+<details>
+<summary><b>Prerequisites</b></summary>
+
+- **tmux** (any reasonably modern version; the dispatchers avoid the tmux ≥ 3.2 `-e` flag)
+- **perl** (strips ANSI codes from captured panes; preinstalled on macOS and almost every Linux distro)
+- **Claude Code** as the orchestrator
+- The agent CLIs you want to drive, installed and **authed** (`pi`, `opencode`, `codex`, cursor's `agent`, `copilot`, `droid`, `agy`). Skills for tools you don't have are inert; install only what you use with `--skills`.
+
+Works on macOS and Linux (the dispatchers are bash, with BSD/GNU fallbacks). On Linux servers, the agent CLIs' own OAuth flows may need a browser, so auth each tool once before relying on the skills.
+
+The installer also creates `~/.config/cc-agents/env` (chmod 600). Put the model-provider API keys your workers need there (e.g. `ZAI_API_KEY=...`). The pi dispatcher sources this file instead of your shell rc, so workers get only those keys, not your whole environment. If the file is absent it falls back to your login shell.
+</details>
+
 ## What you can do
 
 | You say | What happens |
@@ -78,19 +91,6 @@ hooks/                          per-tool completion hooks (exact done-detection)
 install.sh                      copies both trees, installs hooks
 doctor                          verifies the setup; optional live smoke test
 ```
-
-<details>
-<summary><b>Prerequisites</b></summary>
-
-- **tmux** (any reasonably modern version; the dispatchers avoid the tmux ≥ 3.2 `-e` flag)
-- **perl** (strips ANSI codes from captured panes; preinstalled on macOS and almost every Linux distro)
-- **Claude Code** as the orchestrator
-- The agent CLIs you want to drive, installed and **authed** (`pi`, `opencode`, `codex`, cursor's `agent`, `copilot`, `droid`, `agy`). Skills for tools you don't have are inert; install only what you use with `--skills`.
-
-Works on macOS and Linux (the dispatchers are bash, with BSD/GNU fallbacks). On Linux servers, the agent CLIs' own OAuth flows may need a browser, so auth each tool once before relying on the skills.
-
-The installer also creates `~/.config/cc-agents/env` (chmod 600). Put the model-provider API keys your workers need there (e.g. `ZAI_API_KEY=...`). The pi dispatcher sources this file instead of your shell rc, so workers get only those keys, not your whole environment. If the file is absent it falls back to your login shell.
-</details>
 
 <details>
 <summary><b>Security (read before unattended runs)</b></summary>
