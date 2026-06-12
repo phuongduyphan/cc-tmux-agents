@@ -81,7 +81,6 @@ check_tool copilot  copilot  ""
 check_tool droid    droid    ""
 check_tool agy      agy      ""
 check_tool claude   claude   ""
-check_tool gemini   gemini   ""
 
 if command -v codex >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
   grep -q 'cc-notify\.sh' "$HOME/.codex/config.toml" \

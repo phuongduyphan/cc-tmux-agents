@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# gemini-agent — dispatcher for driving a Gemini CLI session via tmux.
+# droid-agent — dispatcher for driving a Droid (Factory AI) CLI session via tmux.
 # See ../SKILL.md for the contract.
 
 set -euo pipefail
 
-SID="codex-gemini"
+SID="codex-droid"
 if [ "${1:-}" = "--session" ]; then
   SID="$2"
   shift 2
@@ -20,7 +20,7 @@ strip_ansi() {
 # BUSY_RE — the "agent is actively working" indicator for this TUI. The single
 # per-agent knob: used both to confirm a submit landed (type_and_submit) and to
 # detect idle (wait).
-BUSY_RE='esc +(to +)?(interrupt|cancel)'
+BUSY_RE='Streaming|ESC +to +stop|Thinking'
 
 # Type a message and submit it. Some TUIs swallow the first Enter after a paste
 # (treating it as a newline inside the draft) or take time to visually clear
@@ -28,7 +28,7 @@ BUSY_RE='esc +(to +)?(interrupt|cancel)'
 #   1) type the text literally,
 #   2) wait for a 30-char canary to appear in the bottom ~15 lines (input-box region),
 #   3) send Enter, wait 1.2s, then accept submission if either:
-#        - a "esc to interrupt" / "esc to cancel" processing indicator is visible (positive), or
+#        - a "ESC to stop" / "Streaming" processing indicator is visible (positive), or
 #        - the canary is gone from the bottom 15 lines (negative).
 #      Retry up to 3 times.
 type_and_submit() {
@@ -80,9 +80,9 @@ case "$VERB" in
       echo "error: session '$SID' already running; run 'stop' first" >&2
       exit 1
     fi
-    tmux new-session -d -s "$SID" -x 220 -y 50 'gemini --yolo'
+    tmux new-session -d -s "$SID" -x 220 -y 50 'droid'
 
-    READY_RE='Type your message|\? for shortcuts'
+    READY_RE='\? for help|shift\+tab to cycle modes|ctrl\+L for autonomy'
     READY=""
     for _ in $(seq 1 40); do   # 40 * 0.5s = 20s budget
       if tmux capture-pane -t "$SID" -p -S -100 2>/dev/null | strip_ansi | grep -qE "$READY_RE"; then
@@ -92,7 +92,7 @@ case "$VERB" in
       sleep 0.5
     done
     if [ -z "$READY" ]; then
-      echo "error: gemini did not become ready within 20s; run 'capture' to inspect or 'stop' to tear down" >&2
+      echo "error: droid did not become ready within 20s; run 'capture' to inspect or 'stop' to tear down" >&2
       exit 1
     fi
 
@@ -202,19 +202,17 @@ case "$VERB" in
 
   stop)
     if tmux has-session -t "$SID" 2>/dev/null; then
-      tmux send-keys -t "$SID" '/quit' Enter 2>/dev/null || true
-      sleep 1
       tmux kill-session -t "$SID" 2>/dev/null || true
     fi
     echo "stopped session=$SID"
     ;;
 
   list)
-    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^codex-gemini' || echo "no active sessions"
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^codex-droid' || echo "no active sessions"
     ;;
 
   *)
-    echo "usage: gemini-agent [--session <name>] <start|send|keys|capture|wait|stop|list> [args]" >&2
+    echo "usage: droid-agent [--session <name>] <start|send|keys|capture|wait|stop|list> [args]" >&2
     exit 2
     ;;
 esac

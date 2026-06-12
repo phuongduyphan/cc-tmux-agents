@@ -59,7 +59,7 @@ The installer also creates `~/.config/cc-agents/env` (chmod 600). Put the model-
 
 **Fully auto:** `/autopilot <agent> <task>` hands the whole job to Claude. It arms two wake sources, checkpoints the worker every 10 minutes (interrupt, read progress, course-correct), breaks thinking loops, ground-truths progress against the actual diff, reviews the result, and logs every autonomous decision to `/tmp/cc-autopilot-<agent>-decisions.md`.
 
-Supported workers: **pi, opencode, codex, cursor, copilot, droid, agy** (plus **claude** and **gemini** when another agent is the boss, see below).
+Supported workers: **pi, opencode, codex, cursor, copilot, droid, agy** (plus **claude** as a worker when another agent is the boss, see below).
 
 ## How it works
 

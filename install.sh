@@ -75,7 +75,7 @@ install_tree "$REPO_DIR/skills" "$SKILLS_DST"
 # Same dispatchers in the cross-agent Agent Skills format, for using codex /
 # opencode / pi (instead of Claude Code) as the orchestrator. Invoked as $name;
 # `wait` runs in the foreground there (those harnesses can't background-and-
-# reinvoke). Workers include claude and gemini.
+# reinvoke). Workers include claude.
 AGENTS_DST="$HOME/.agents/skills"
 echo "Installing agents-skills ($MODE) into $AGENTS_DST"
 install_tree "$REPO_DIR/agents-skills" "$AGENTS_DST"
