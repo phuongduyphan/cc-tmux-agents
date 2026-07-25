@@ -1,120 +1,198 @@
 # cc-tmux-agents
 
-**Let Claude Code talk to your other coding agents.** 
+<p align="">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="macOS and Linux">
+  <img src="https://img.shields.io/badge/built%20with-Bash%20%2B%20tmux-green" alt="Built with Bash and tmux">
+</p>
 
-Like Claude Code subagents, but the subagents are codex, opencode, pi, etc. Delegate a task, watch it work, send follow-ups, interrupt it, and have Claude review the result. Steer it yourself, or hand the whole thing off and walk away.
+> Cross-agent orchestration for Claude Code, Codex, OpenCode, and other coding CLIs
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)"  srcset="https://github.com/user-attachments/assets/2c919775-71db-49af-8d58-10182a209745">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/42d99f60-c8ec-4ed9-befe-0b8e74c0db81">
+    <img src="https://github.com/user-attachments/assets/42d99f60-c8ec-4ed9-befe-0b8e74c0db81" alt="Let Claude Code talk to your other coding agents" width="100%">
+  </picture>
+</p>
+
+
+## Why this project
+
+- **Cross-agent communication.** Let Claude Code, Codex, OpenCode, Pi, and other coding CLIs work with each other.
+- **Lightweight by design.** Connect the coding CLIs you already use through simple tmux-based skills and shell commands.
+- **Lower model costs.** Keep planning and review on a stronger model while moving token-heavy implementation to a cheaper worker.
+
+## What it does
+
+Use one coding agent to work with another. For example, Claude Code can ask Codex or OpenCode to implement a feature, monitor its progress, send corrections, interrupt it when it goes in the wrong direction, and review the finished changes.
+
+The worker runs inside a persistent tmux session, so both you and the supervising agent can inspect or steer it at any time, including remotely over SSH. The integration uses small Bash dispatchers and reusable skills, with no central orchestration server or vendor-specific API.
+
+In this README, the agent that supervises the work is the **boss**. The agent running inside tmux is the **worker**.
 
 https://github.com/user-attachments/assets/824acaf6-e4ba-461c-bed9-cc6775d43233
 
-## Why
+## tmux versus headless mode
 
-- **Pay top rates only for the thinking.** A strong model earns its price on planning and review, which are light on tokens. Implementation is the token-heavy part, so running it on a cheaper agent is where the real savings are, without giving up the decisions.
-- **Minimal setup, basic primitives, build your own workflows.** One mechanism (tmux) drives any agent, no per-vendor API, so a handful of composable primitives (start, check, tell, interrupt, wait, kill) is the whole surface. Steer a run by hand, or compose those primitives into something fully autonomous: `/autopilot` is one such workflow, and you can build your own.
-- **Works everywhere, from your laptop to your phone.** It's all tmux over SSH. Kick off a run at your desk, then check on it, steer it, or start a new one from your phone.
+Most coding-agent CLIs also offer a headless `run` or `exec` command. That works well for one-shot jobs. This project uses tmux when you want the worker to remain alive, visible, and steerable.
+
+| | tmux (this project) | headless `run` / `exec` |
+|---|---|---|
+| Mid-run control | attach, inspect, redirect, or interrupt | often designed for one-shot execution; capabilities vary by CLI |
+| Follow-ups | continue inside the same live session | continuity depends on the tool and invocation mode |
+| Coverage | works with terminal-based CLIs | requires a supported headless interface |
+| Remote access | detach and reattach from another computer or phone | usually controlled by the invoking process or wrapper |
+| Context | keeps the worker session warm across turns | may start a new session for each invocation |
 
 ## Quick start
 
 ```bash
-git clone <this-repo> ~/code/cc-tmux-agents
+git clone https://github.com/phuongduyphan/cc-tmux-agents.git ~/code/cc-tmux-agents
 cd ~/code/cc-tmux-agents
 ./install.sh                 # all skills; or: ./install.sh --skills "pi opencode autopilot"
 ./doctor                     # verify the setup
-./doctor --smoke opencode    # optional ~30s live end-to-end test
+./doctor --smoke opencode    # optional live end-to-end test
 ```
 
-`install.sh` copies the skills into place (it touches only its own skill folders, so your other skills are left alone). Re-run it after a `git pull` to refresh them, or pass `--link` to symlink instead so pulls update them live with no re-run. Then, in Claude Code:
+Then, in Claude Code:
 
-```
+```text
 /opencode what is this project about?
 ```
 
-That starts a tmux session running opencode, types the task, and (by default) arms a background `wait` so Claude is pinged the instant the worker finishes.
+Claude starts OpenCode in a tmux session, sends it the task, and waits in the background. You can continue using Claude, check what OpenCode is doing, send it another instruction, or wait for Claude to notify you when it finishes.
+
+`install.sh` touches only this project's skill folders. Re-run it after `git pull`, or use `--link` so updates are picked up through symlinks.
 
 <details>
 <summary><b>Prerequisites</b></summary>
 
-- **tmux** (any reasonably modern version; the dispatchers avoid the tmux ≥ 3.2 `-e` flag)
-- **perl** (strips ANSI codes from captured panes; preinstalled on macOS and almost every Linux distro)
-- **Claude Code** as the orchestrator
-- The agent CLIs you want to drive, installed and **authed** (`pi`, `opencode`, `codex`, cursor's `agent`, `copilot`, `droid`, `agy`). Skills for tools you don't have are inert; install only what you use with `--skills`.
+- **tmux**
+- **perl** for stripping ANSI codes from captured terminal output
+- **Claude Code, Codex, OpenCode, or Pi** as the boss
+- The worker CLIs you want to use, installed and authenticated
 
-Works on macOS and Linux (the dispatchers are bash, with BSD/GNU fallbacks). On Linux servers, the agent CLIs' own OAuth flows may need a browser, so auth each tool once before relying on the skills.
+The dispatchers support macOS and Linux with BSD/GNU fallbacks. On remote Linux hosts, authenticate each CLI once before relying on unattended runs.
 
-The installer also creates `~/.config/cc-agents/env` (chmod 600). Put the model-provider API keys your workers need there (e.g. `ZAI_API_KEY=...`). The pi dispatcher sources this file instead of your shell rc, so workers get only those keys, not your whole environment. If the file is absent it falls back to your login shell.
+The installer also creates `~/.config/cc-agents/env` with mode `600`. Put worker-specific provider keys there, such as `ZAI_API_KEY`. The Pi dispatcher reads this file instead of loading your full shell environment.
+
 </details>
 
-## What you can do
+## Supported agents
 
-| You say | What happens |
-|---|---|
-| `/opencode <task>` | starts a tmux session running opencode, types the task, arms a backgrounded `wait` |
-| "check opencode" | captures the pane, shows the tail, gives a one-line diagnosis |
-| "tell opencode: X" | queues a follow-up into the same session |
-| "interrupt opencode" | sends Escape |
-| "tell me when it's done" | the default for plain delegation; Claude is pinged on completion |
-| "kill opencode" | tears the session down |
-| `/autopilot opencode <task>` | fully autonomous: checkpoints every 10 min, course-corrects, final review, decision log |
+Some agents can supervise workers, while others currently work only as workers.
 
-**Semi-auto:** delegate, then watch and steer. You can always look over an agent's shoulder with `tmux attach -t cc-opencode` (detach with `ctrl-b d`), from any machine that can SSH in.
+| Agent | Boss | Worker | Notes |
+|---|:---:|:---:|---|
+| Claude Code | yes (`/name`) | yes | Worker when Codex, OpenCode, or Pi is the boss. |
+| Codex | yes (`$name`) | yes | Worker when Claude Code is the boss. |
+| OpenCode | yes (`$name`) | yes | Boss or worker. |
+| Pi | yes (`$name`) | yes | Boss or worker. |
+| Cursor (`agent`) | no | yes | Worker only. |
+| Copilot | no | yes | Worker only. |
+| Droid (Factory AI) | no | yes | Worker only. |
+| Agy (Antigravity) | no | yes | Worker only. |
 
-**Fully auto:** `/autopilot <agent> <task>` hands the whole job to Claude. It arms two wake sources, checkpoints the worker every 10 minutes (interrupt, read progress, course-correct), breaks thinking loops, ground-truths progress against the actual diff, reviews the result, and logs every autonomous decision to `/tmp/cc-autopilot-<agent>-decisions.md`.
+## The six worker actions
 
-Supported workers: **pi, opencode, codex, cursor, copilot, droid, agy** (plus **claude** as a worker when another agent is the boss, see below).
+Every worker skill supports the same six actions. For example, Claude Code can start OpenCode, read what it is doing, send another instruction, interrupt it, wait for it, or stop it.
 
-## How it works
+| Action | You say | What happens | Dispatcher verb |
+|---|---|---|---|
+| **start** | `/opencode <task>` | launch the worker in tmux and send it the task | `start` |
+| **check** | "check opencode" | read the terminal and summarize recent progress | `capture` |
+| **tell** | "tell opencode: X" | send a follow-up into the same session | `send` |
+| **interrupt** | "interrupt opencode" | send `Escape` to stop the current turn | `keys Escape` |
+| **wait** | "tell me when it's done" | wait until the worker goes idle, then notify the boss | `wait` |
+| **kill** | "kill opencode" | tear down the worker session | `stop` |
 
-Every coding agent is just a TUI in a terminal, so the whole integration is a handful of tmux commands against the agent's pane. No per-vendor API, no SDK: if a tool runs in a terminal, Claude can drive it.
+These actions are the foundation of the project. `/autopilot` combines them into one ready-made workflow, and you can combine them differently in your own `SKILL.md`.
 
-| What Claude does | How (tmux) |
-|---|---|
-| Type the task or a follow-up | `send-keys` into the pane |
-| Read what the agent is doing | `capture-pane`, with ANSI codes stripped |
-| Interrupt a wrong turn | `send-keys Escape` |
-| Start or tear down a run | `new-session` / `kill-session` |
-| Know the instant it finishes | a per-tool completion hook, falling back to watching the spinner |
+You can also watch a worker directly:
 
-A small bash dispatcher (`bin/<name>-agent`) wraps these into verbs, and a `SKILL.md` tells Claude which verb to use when. Claude decides what to do; the cheaper model inside the agent does the typing.
-
-Two skill trees let either side be the boss:
-
-- **`skills/` → `~/.claude/skills`** (Claude Code as boss): skills invoked as `/name`. `wait` runs as a backgrounded command, so the harness pings Claude the moment the worker goes idle. This powers `/autopilot`.
-- **`agents-skills/` → `~/.agents/skills`** (codex, opencode, or pi as boss): the same dispatchers in the cross-agent format, invoked as `$name`. These harnesses can't background-and-wake, so `wait` runs in the foreground, and there's no `/autopilot`.
-
-Install both and use whichever boss you're in.
-
-```
-skills/<name>/SKILL.md          the contract Claude reads (verbs + rules)
-skills/<name>/bin/<name>-agent  the tmux dispatcher that implements it
-skills/autopilot/               the autonomous orchestrator (wraps the dispatchers)
-agents-skills/<name>/           same dispatchers, cross-agent format (codex/opencode/pi as boss)
-hooks/                          per-tool completion hooks (exact done-detection)
-install.sh                      copies both trees, installs hooks
-doctor                          verifies the setup; optional live smoke test
+```bash
+tmux attach -t cc-opencode
 ```
 
-<details>
-<summary><b>Security (read before unattended runs)</b></summary>
+## `/autopilot`
 
-- Some dispatchers launch their tool with permissions relaxed so unattended runs don't stall: codex defaults to `--dangerously-bypass-approvals-and-sandbox`, agy to `--dangerously-skip-permissions`, copilot to `--allow-all`, cursor to `--force`. For codex you can override via `CC_CODEX_ARGS` (e.g. `CC_CODEX_ARGS="--full-auto"` keeps the OS sandbox on and lets the orchestrator answer approval prompts through the pane).
-- opencode and pi have **no OS sandbox at all** (their permission prompts are UX, not isolation). For overnight or autonomous runs, prefer a dedicated container or VM holding only the worktree, the toolchain, and the one API key.
-- Keep workers in per-task git worktrees without push credentials, and keep secrets out of the workspace.
+<img width="1249" height="535" alt="image" src="https://github.com/user-attachments/assets/22dbbc22-dab0-4c00-84e0-a891498d96a9" />
+
+`/autopilot` is a ready-made Claude Code skill for supervising another coding agent.
+
+For example, Claude can give a task to Codex, periodically check its work, correct it when it goes in the wrong direction, run the relevant tests, and review the final diff before reporting back to you.
+
+It is similar in spirit to `[/workflow](https://code.claude.com/docs/en/workflows)` in Claude Code or `[/goal](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)` in Codex, except the supervisor and worker can be different CLI agents.
+
+```text
+/autopilot <pi|opencode|codex|cursor> <task description>
+```
+
+`/autopilot` is built as a normal [`SKILL.md`](skills/autopilot/SKILL.md) using the same worker actions. It is one example workflow, and you can create your own skills in the same way.
+
+## Workflow examples
+
+### Claude plans, Codex implements
+
+```text
+# Work with Claude to create PLAN.md
+/codex implement PLAN.md and run the test suite
+"tell me when it's done"
+```
+
+When Codex finishes, Claude reads the diff and reviews the implementation.
+
+### Redirect a worker mid-run
+
+```text
+"check pi"
+"interrupt pi"
+"tell pi: leave auth/ alone; the bug is in session/store.ts:42"
+```
+
+The Pi session stays alive, so it keeps its previous context and continues from your correction.
+
+### Monitor from a phone with Termius
+
+Install a mobile SSH client such as [Termius](https://termius.com/), connect to your development machine, and attach to the worker:
+
+```bash
+tmux attach -t cc-opencode
+```
+
+### Build your own cross-agent skill
+
+`/autopilot` is a Claude Code skill that combines the existing worker actions into a supervision workflow.
+
+You can create your own skill in the same way. For example, an `implement-and-review` skill could:
+
+1. ask Codex to implement a feature;
+2. wait until Codex finishes;
+3. inspect the diff and run the tests;
+4. ask OpenCode to review the result;
+5. send any requested fixes back to Codex;
+6. report the final result.
+
+Create your own `SKILL.md` by combining the same worker actions. See [`skills/autopilot/SKILL.md`](skills/autopilot/SKILL.md) for a complete example.
+
+## How this compares
+
+- **Claude Code subagents:** Claude works with another Claude instance. This project lets Claude work with Codex, OpenCode, Pi, or another independent CLI.
+- **Claude Code workflows or Codex goals:** those features run a workflow inside one product. `/autopilot` can supervise a worker from a different CLI.
+- **Full orchestration platforms:** those projects may add dashboards, task queues, databases, schedulers, and fleet management. This project stays focused on lightweight skills and shell commands for agents running on one host.
+
+## Security
+
+<details>
+<summary><b>Read before unattended runs</b></summary>
+
+- Some workers run with relaxed approval or sandbox settings so they do not stall.
+- OpenCode and Pi do not provide an OS sandbox. For autonomous runs, use a dedicated container or VM with limited credentials and only the required worktree.
+- Keep secrets and push credentials out of the worker environment, and review the blast radius before using `/autopilot`.
+
 </details>
 
-<details>
-<summary><b>Troubleshooting</b></summary>
+## License
 
-- **`start` times out / `wait` never fires.** The dispatchers detect TUI state with two regexes per tool (`READY_RE`, `BUSY_RE`, near the top of each `bin/<name>-agent`). Tool UIs change between versions; if a tool updated and broke detection, run `<name>-agent capture` to see the actual screen text and adjust the regex. PRs welcome.
-- **`wait` reports spinner-fallback instead of the hook.** Run `./doctor`: the hook file or its registration is missing for that tool.
-- **pi starts but errors about API keys.** Add the provider key to `~/.config/cc-agents/env`.
-- **Session already running.** Each skill uses one named session (e.g. `cc-pi`). Run `<name>-agent stop` or use `--session <other-name>` for parallel sessions.
-</details>
-
-## Why tmux instead of headless mode
-
-Most agent CLIs offer a headless `run`/`exec` mode. These skills deliberately drive the interactive TUI over tmux instead:
-
-- **You can watch and steer mid-run.** Headless is fire-and-forget; tmux lets you or Claude read progress, course-correct, and redirect before a wrong approach burns an hour.
-- **Interrupting is free.** A bad turn is one `Escape` away, instead of waiting for a headless run to finish or killing the process and losing its state.
-- **One integration for every tool.** Every agent has a terminal UI; not every agent has a stable headless API. tmux works for all of them, including tools that ship next month.
-- **The session is durable and reachable.** It lives on the host, so you can detach, close your laptop, and reattach from another machine (or your phone) with the run still going.
-- **Warm context instead of a cold start each turn.** A headless `run` spins up a fresh session every invocation, so the agent re-reads everything from scratch. A persistent tmux session stays alive across turns, so the prompt cache stays warm and follow-ups are cheaper and faster.
+See [LICENSE](LICENSE).
