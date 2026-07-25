@@ -123,7 +123,7 @@ tmux attach -t cc-opencode
 
 For example, Claude can give a task to Codex, periodically check its work, correct it when it goes in the wrong direction, run the relevant tests, and review the final diff before reporting back to you.
 
-It is similar in spirit to `[/workflow](https://code.claude.com/docs/en/workflows)` in Claude Code or `[/goal](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)` in Codex, except the supervisor and worker can be different CLI agents.
+It is similar in spirit to [/workflow](https://code.claude.com/docs/en/workflows) in Claude Code or [/goal](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex) in Codex, except the supervisor and worker can be different CLI agents.
 
 ```text
 /autopilot <pi|opencode|codex|cursor> <task description>
